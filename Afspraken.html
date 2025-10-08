@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Afspraken planner</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      max-width: 750px;
+    }
+    label {
+      display: block;
+      margin: 0.5rem 0;
+    }
+    input {
+      padding: 0.3rem;
+      width: 250px;
+    }
+    button {
+      margin: 0.2rem;
+      padding: 0.3rem 0.8rem;
+      cursor: pointer;
+    }
+    #status {
+      margin-top: 1rem;
+      font-weight: bold;
+      color: green;
+    }
+    table {
+      margin-top: 1.5rem;
+      border-collapse: collapse;
+      width: 100%;
+    }
+    th, td {
+      padding: 0.5rem;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+    th {
+      background-color: #f0f0f0;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Afspraken planner</h1>
+ 
+  <label>
+    Naam:
+    <input type="text" id="naam">
+  </label>
+
+  <label>
+    Onderwerp:
+    <input type="text" id="onderwerp">
+  </label>
+
+  <label>
+    Afspraak tijd:
+    <input type="datetime-local" id="tijd">
+  </label>
+ 
+  <button onclick="planAfspraak()">Plan afspraak</button>
+  <button id="updateBtn" style="display:none;" onclick="updateAfspraak()">Update afspraak</button>
+ 
+  <p id="status"></p>
+ 
+  <h2>Ingeplande afspraken</h2>
+
+  <table id="afsprakenTabel">
+    <thead>
+      <tr>
+        <th>Naam</th>
+        <th>Onderwerp</th>
+        <th>Tijd</th>
+        <th>Reminder</th>
+        <th>Acties</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    let afspraken = [];
+    let editIndex = null;
+
+    window.onload = () => {
+      const opgeslagen = localStorage.getItem("afspraken");
+      if (opgeslagen) {
+        afspraken = JSON.parse(opgeslagen).map(a => ({
+          ...a,
+          tijd: new Date(a.tijd),
+          reminderTijd: new Date(a.reminderTijd),
+          timeoutId: planReminder(a)
+        }));
+        toonAfspraken();
+      }
+    };
+
+      function planAfspraak() {
+      const naam = document.getElementById("naam").value.trim();
+      const onderwerp = document.getElementById("onderwerp").value.trim();
+      const tijd = new Date(document.getElementById("tijd").value);
+
+      if (!naam || !onderwerp || isNaN(tijd)) {
+        alert("Vul alle velden correct in!");
+        return;
+      }
+
+      const reminderTijd = new Date(tijd.getTime() - 15 * 60000);
+      const now = new Date();
+      const msTotReminder = reminderTijd - now;
+ 
+      if (msTotReminder <= 0) {
+        alert("Deze afspraak is te dichtbij, reminder kan niet worden ingesteld.");
+        return;
+      }
+
+       const afspraak = {
+        naam,
+        onderwerp,
+        tijd,
+        reminderTijd,
+        timeoutId: null
+      };
+
+      afspraak.timeoutId = planReminder(afspraak);
+       afspraken.push(afspraak);
+      opslaan();
+      toonAfspraken();
+
+       document.getElementById("status").textContent =
+        `Afspraak voor ${naam} (${onderwerp}) ingepland op ${tijd.toLocaleTimeString()}. Reminder komt om ${reminderTijd.toLocaleTimeString()}.`;
+       resetForm();
+    }
+
+     function planReminder(afspraak) {
+      const msTotReminder = afspraak.reminderTijd - new Date();
+      if (msTotReminder > 0) {
+        return setTimeout(() => {
+          alert(`Herinnering voor ${afspraak.naam}: je afspraak (${afspraak.onderwerp}) is om ${afspraak.tijd.toLocaleTimeString()}`);
+        }, msTotReminder);
+      }
+      return null;
+    }
+
+     function toonAfspraken() {
+      const tbody = document.querySelector("#afsprakenTabel tbody");
+      tbody.innerHTML = "";
+      afspraken.forEach((a, index) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${a.naam}</td>
+          <td>${a.onderwerp}</td>
+          <td>${a.tijd.toLocaleString()}</td>
+          <td>${a.reminderTijd.toLocaleTimeString()}</td>
+          <td>
+            <button onclick="bewerkAfspraak(${index})">Bewerken</button>
+            <button onclick="verwijderAfspraak(${index})">Verwijderen</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    function verwijderAfspraak(index) {
+      clearTimeout(afspraken[index].timeoutId);
+      afspraken.splice(index, 1);
+      opslaan();
+      toonAfspraken();
+      document.getElementById("status").textContent = "Afspraak verwijderd.";
+      resetForm();
+    }
+ 
+    function bewerkAfspraak(index) {
+      const afspraak = afspraken[index];
+      document.getElementById("naam").value = afspraak.naam;
+      document.getElementById("onderwerp").value = afspraak.onderwerp;
+      document.getElementById("tijd").value = afspraak.tijd.toISOString().slice(0,16);
+      editIndex = index;
+      document.querySelector("button[onclick='planAfspraak()']").style.display = "none";
+      document.getElementById("updateBtn").style.display = "inline-block";
+      document.getElementById("status").textContent = "Je bewerkt nu een afspraak.";
+    }
+ 
+    function updateAfspraak() {
+      const naam = document.getElementById("naam").value.trim();
+      const onderwerp = document.getElementById("onderwerp").value.trim();
+      const tijd = new Date(document.getElementById("tijd").value);
+      if (!naam || !onderwerp || isNaN(tijd)) {
+        alert("Vul alle velden correct in!");
+        return;
+      }
+
+       clearTimeout(afspraken[editIndex].timeoutId);
+      const reminderTijd = new Date(tijd.getTime() - 15 * 60000);
+      const afspraak = {
+        naam,
+        onderwerp,
+        tijd,
+        reminderTijd,
+        timeoutId: null
+      };
+      afspraak.timeoutId = planReminder(afspraak);
+      afspraken[editIndex] = afspraak;
+      opslaan();
+      toonAfspraken();
+
+       document.getElementById("status").textContent =
+        `Afspraak geüpdatet voor ${naam} (${onderwerp}) om ${tijd.toLocaleTimeString()}.`;
+      resetForm();
+    }
+
+    function resetForm() {
+      document.getElementById("naam").value = "";
+      document.getElementById("onderwerp").value = "";
+      document.getElementById("tijd").value = "";
+      editIndex = null;
+      document.querySelector("button[onclick='planAfspraak()']").style.display = "inline-block";
+      document.getElementById("updateBtn").style.display = "none";
+    }
+ 
+    function opslaan() {      
+      const opslagData = afspraken.map(a => ({
+        naam: a.naam,
+        onderwerp: a.onderwerp,
+        tijd: a.tijd,
+        reminderTijd: a.reminderTijd
+      }));
+      localStorage.setItem("afspraken", JSON.stringify(opslagData));
+    }
+  </script>
+</body>
+</html>
